@@ -85,3 +85,18 @@ def test_evaluate_runs(pipes):
     words = sorted({w for s in SENTENCES[:9] for w in text.MALAYALAM_RUN.findall(normalize(s)) if len(w) > 1})
     r = evaluate(pipes["norm"], SENTENCES[:9], words)
     assert r["mismatch_words"] == 0 and r["noun_n"] > 0 and 0 <= r["noun_clean"] <= 1 and r["tok_per_word"] > 0
+
+
+def test_heldout_split_is_by_article_and_disjoint(tmp_path):
+    pa = pytest.importorskip("pyarrow")
+    import pyarrow.parquet as pq
+    from maltok.train import is_heldout, read_sentences
+    urls = [f"https://ml.wikipedia.org/wiki/A{i}" for i in range(400)]
+    rows = {"sentence": [f"വാക്യം {i} {j}" for i in range(400) for j in range(3)],
+            "url": [u for u in urls for _ in range(3)]}
+    path = tmp_path / "s.parquet"
+    pq.write_table(pa.table(rows), path)
+    train_lines, held = read_sentences(path), read_sentences(path, heldout=True)
+    assert held and not set(train_lines) & set(held)
+    assert len(train_lines) + len(held) == 1200
+    assert sum(is_heldout(u) for u in urls) == len(held) // 3          # whole articles move together

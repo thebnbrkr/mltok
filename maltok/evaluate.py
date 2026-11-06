@@ -117,26 +117,35 @@ def table(results: list[dict]) -> str:
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--flores", required=True)
+    ap.add_argument("--wiki", help="ml.sentences.parquet: also evaluate on sentences from held-out articles")
+    ap.add_argument("--wiki-n", type=int, default=5000)
     ap.add_argument("--smc", help="released SMC tokenizer.json, evaluated as a reference")
     ap.add_argument("--models", required=True, help="folder with one sub-folder per trained pipeline")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
-    lines = flores_lines(Path(a.flores))
-    words = sorted({w for l in lines for w in MALAYALAM_RUN.findall(normalize(l)) if len(w) > 1})
-    morph.precompute(words)
+    sets = {"FLORES-200 Malayalam dev+devtest (translated news-style text)": flores_lines(Path(a.flores))}
+    if a.wiki:
+        from .train import read_sentences
+        sets[f"Malayalam Wikipedia, held-out articles ({a.wiki_n:,}-sentence sample; never used in training)"] = \
+            read_sentences(Path(a.wiki), a.wiki_n, heldout=True)
     pipes = ([Pipeline.reference(Path(a.smc))] if a.smc else []) + \
             [Pipeline.load(p) for p in sorted(Path(a.models).iterdir()) if (p / "meta.json").exists()]
-    results = [evaluate(p, lines, words) for p in pipes]
-    n = results[0]
-    note = (f"FLORES-200 Malayalam dev+devtest: {len(lines):,} sentences, {len(words):,} distinct words; "
-            f"mlmorph-analysed stems: {n['noun_n']:,} nouns, {n['verb_n']:,} verbs; "
-            f"{n['robust_n']:,} words with a chillu or ന്റ for the robustness test.")
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "eval.json").write_text(json.dumps(results, indent=1, ensure_ascii=False))
-    md = note + "\n\n" + table(results)
-    (out / "eval.md").write_text(md)
-    print(md)
+    md, everything = [], {}
+    for title, lines in sets.items():
+        words = sorted({w for l in lines for w in MALAYALAM_RUN.findall(normalize(l)) if len(w) > 1})
+        morph.precompute(words)
+        results = [evaluate(p, lines, words) for p in pipes]
+        n = results[0]
+        md += [f"### {title}", "",
+               f"{len(lines):,} sentences, {len(words):,} distinct words; mlmorph-analysed stems: "
+               f"{n['noun_n']:,} nouns, {n['verb_n']:,} verbs; {n['robust_n']:,} words with a chillu or ന്റ "
+               "for the robustness test.", "", table(results), ""]
+        everything[title] = results
+    (out / "eval.json").write_text(json.dumps(everything, indent=1, ensure_ascii=False))
+    (out / "eval.md").write_text("\n".join(md))
+    print("\n".join(md))
 
 
 if __name__ == "__main__":

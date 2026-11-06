@@ -13,9 +13,20 @@ from pathlib import Path
 from .pipeline import VARIANTS, train
 
 
-def read_sentences(path: Path, limit: int | None = None, seed: int = 0) -> list[str]:
+HELDOUT_MOD = 100   # articles whose URL hashes to 0 mod 100 (~1%) are held out for evaluation
+
+
+def is_heldout(url: str) -> bool:
+    import zlib
+    return zlib.crc32((url or "").encode()) % HELDOUT_MOD == 0
+
+
+def read_sentences(path: Path, limit: int | None = None, seed: int = 0, heldout: bool = False) -> list[str]:
+    """Training sentences (heldout=False) or held-out-article sentences (heldout=True), split by article."""
     import pyarrow.parquet as pq
-    lines = [s for s in pq.read_table(path, columns=["sentence"]).column("sentence").to_pylist() if s and s.strip()]
+    t = pq.read_table(path, columns=["sentence", "url"])
+    lines = [s for s, u in zip(t.column("sentence").to_pylist(), t.column("url").to_pylist())
+             if s and s.strip() and is_heldout(u) == heldout]
     if limit and limit < len(lines):
         import random
         lines = random.Random(seed).sample(lines, limit)

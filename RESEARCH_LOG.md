@@ -67,3 +67,15 @@ making tokens per word more than 5% worse.
 
 Silver boundaries (mlmorph lemma + akshara rounding), nouns and simple verbs only; one evaluation corpus; rule 1
 for `morph` is partly circular. A native speaker will check ~300 words to make a gold set.
+
+---
+
+## 2026-11-06 (later): Second evaluation set, after Thottingal's MTEB post
+
+His MTEB post (Oct 2026) shows Malayalam's leaderboard score is 84% one FLORES-based task, and argues for
+evaluation on real Malayalam text. FLORES is translated news-style text, so we add a second set: sentences from
+**held-out Wikipedia articles** (articles whose URL hashes to 0 mod 100, about 1%; split by article, so no article
+is in both training and test; 5,000-sentence sample). Same measures, reported separately for both sets.
+
+Compounds (his ആനപ്പുറത്തു കയറി example) are left for the native-speaker gold set: mlmorph's compound analyses
+need a separate boundary rule.

@@ -21,7 +21,7 @@ CELLS = [
     md("""
 # Malayalam tokenizer: can we improve on the SMC Unigram tokenizer?
 
-Trains four variants of Santhosh Thottingal's recipe (HF `tokenizers` Unigram, 16k, NFC + Metaspace) on the 2.25M-sentence Malayalam Wikipedia corpus (`smcproject/ml-wiki-sentences`) and evaluates them, with the released SMC tokenizer as a reference, on FLORES-200 Malayalam:
+Trains four variants of Santhosh Thottingal's recipe (HF `tokenizers` Unigram, 16k, NFC + Metaspace) on the 2.25M-sentence Malayalam Wikipedia corpus (`smcproject/ml-wiki-sentences`) and evaluates them, with the released SMC tokenizer as a reference, on FLORES-200 Malayalam and on sentences from held-out Wikipedia articles (~1% of articles, never used in training):
 
 | variant | what is done to the text first |
 |---|---|
@@ -68,12 +68,12 @@ Checks that everything runs and how long each variant takes. Pilot results are n
 """),
     code("""
 !python -m maltok.train --data {WIKI} --max-sentences 200000 --out {OUT}/pilot --skip-existing
-!python -m maltok.evaluate --flores {DATA}/flores200_dataset --smc {SMC} --models {OUT}/pilot --out {OUT}/pilot_eval
+!python -m maltok.evaluate --flores {DATA}/flores200_dataset --smc {SMC} --wiki {WIKI} --models {OUT}/pilot --out {OUT}/pilot_eval
 """),
     md("## Stage 2: full corpus (2.25M sentences), 16k vocabulary"),
     code("""
 !python -m maltok.train --data {WIKI} --out {OUT}/full --skip-existing
-!python -m maltok.evaluate --flores {DATA}/flores200_dataset --smc {SMC} --models {OUT}/full --out {OUT}/full_eval
+!python -m maltok.evaluate --flores {DATA}/flores200_dataset --smc {SMC} --wiki {WIKI} --models {OUT}/full --out {OUT}/full_eval
 """),
     md("""
 ## How to read it (from `RESEARCH_LOG.md`)

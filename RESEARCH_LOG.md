@@ -156,3 +156,22 @@ ZWNJ (< 10%), because the normaliser does not remove zero-width characters; typo
 of smc-released for base/norm, lower for akshara (whole syllables lose less when a sign is missing). If confirmed,
 the next normaliser removes ZWSP (no role in Malayalam spelling) and is tested again; whether to drop ZWNJ is a
 separate decision (it changes how a conjunct is drawn, not how it is said).
+
+---
+
+## 2026-11-06 (later): Full-corpus tokenizers trained (first notebook run; its evaluation crashed)
+
+`results (19).zip` from the first Colab run holds all four full-corpus tokenizers but no evaluation (that run
+hit the FLORES extraction bug). Training sentences: **2,230,143** of 2,250,217, so the held-out split removed
+20,074 sentences (0.9% of sentences, from ~1% of articles), as intended. Training times on Colab CPU:
+
+| variant | seconds | minutes |
+|---|---|---|
+| base | 689 | 11.5 |
+| norm | 733 | 12.2 |
+| morph | 1,155 | 19.3 (includes mlmorph analysis of all distinct words) |
+| akshara | 509 | 8.5 |
+
+About 6× the pilot times for 11× the sentences. The second, fixed run is in progress; it will evaluate these
+variants (with the harder robustness tests). If it is slow, these trained tokenizers can be evaluated directly
+without retraining.

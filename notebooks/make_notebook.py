@@ -36,8 +36,8 @@ Predictions are written in `RESEARCH_LOG.md` before this runs.
 """),
     code("""
 import os, sys, subprocess
-REPO_URL = 'https://github.com/thebnbrkr/malayalam-tok.git'
-REPO, DATA, OUT = '/content/malayalam-tok', '/content/data', '/content/results'
+REPO_URL = 'https://github.com/thebnbrkr/mltok.git'
+REPO, DATA, OUT = '/content/mltok', '/content/data', '/content/results'
 os.makedirs(DATA, exist_ok=True); os.makedirs(OUT, exist_ok=True)
 if os.path.exists(REPO):
     !git -C {REPO} pull -q

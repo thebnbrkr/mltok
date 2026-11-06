@@ -1,4 +1,4 @@
-# malayalam-tok
+# mltok
 
 Checks of Malayalam tokenizers against Malayalam grammar, as groundwork for a tokenizer × TTS study
 (Pocket TTS; Hungarian counterpart in the Pocket-hu / IWCLUL 2026 work).

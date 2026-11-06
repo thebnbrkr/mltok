@@ -175,3 +175,51 @@ hit the FLORES extraction bug). Training sentences: **2,230,143** of 2,250,217, 
 About 6× the pilot times for 11× the sentences. The second, fixed run is in progress; it will evaluate these
 variants (with the harder robustness tests). If it is slow, these trained tokenizers can be evaluated directly
 without retraining.
+
+---
+
+## 2026-11-06 (later): Full-corpus results, and why they got worse (character explosion)
+
+Second Colab run (`results (21).zip`, code at 39aa777: old 2008-spelling metric, no harder robustness tests).
+Full corpus = 2,230,143 sentences, 16k vocabulary.
+
+| tokenizer | FLORES tok/word | Wiki tok/word | nouns clean (F / W) | verbs clean (F / W) | cuts in akshara (F) |
+|---|---|---|---|---|---|
+| smc-released | 2.13 | 2.36 | 75.8% / 68.9% | 26.2% / 26.2% | 36.1% |
+| base (full) | 2.36 | 2.39 | 68.5% / 63.6% | 24.7% / 27.4% | 32.3% |
+| norm (full) | 2.34 | 2.39 | 68.7% / 64.1% | 24.6% / 27.5% | 32.2% |
+| morph (full) | 2.39 | 2.40 | 77.7% / 73.5% | 66.3% / 70.5% | 27.3% |
+| akshara (full) | 3.16 | 3.12 | 38.3% / 33.8% | 27.3% / 30.4% | 0.3% |
+
+**The full-corpus tokenizers are worse than the pilot ones** (base 2.13 → 2.36 tok/word on FLORES; akshara 2.38 →
+3.16), although they saw 11× more text.
+
+**Cause: the HF Unigram trainer puts every character it sees into the vocabulary.** Malayalam Wikipedia quotes
+many scripts. Single non-Malayalam, non-ASCII characters in the 16k vocabulary:
+
+| tokenizer | foreign single characters | of which CJK |
+|---|---|---|
+| base pilot | 2,465 (15%) | 728 |
+| base full | **7,640 (48%)** | 2,563 |
+| smc-released | **3,981 (25%)** | 1,446 |
+
+So the full model had only 6,583 Malayalam pieces (pilot 10,584; SMC 10,605). The released SMC tokenizer has the
+same problem at a smaller scale: a quarter of its vocabulary is single foreign characters. Training also started
+from 3.28M suffix-array seeds instead of 585k, with the same 30 EM rounds.
+
+**Fix (Stage 3):** SentencePiece-style character coverage: keep the characters that make up 99.99% of character
+occurrences (Malayalam, ASCII, ZWJ, ZWNJ always kept); drop the rest from the training text, so they cannot take
+slots (they become `<unk>` if met). The Stage 3 evaluation scores the Stage 2 and Stage 3 tokenizers together, with
+the corrected robustness metric and the harder tests.
+
+**Predictions for Stage 3 (before running):**
+- foreign single characters in the vocabulary fall below 300 for every variant;
+- base and norm reach ≤ 2.10 tok/word on FLORES (better than smc-released's 2.13) and ≤ 2.10 on held-out Wikipedia;
+- morph keeps nouns clean ≥ 85% and verbs clean ≥ 70% on FLORES, at ≤ 3% more tokens than norm;
+- akshara improves the most (it has the largest alphabet), but stays > 5% above norm;
+- `<unk>` stays below 0.1% on both sets;
+- harder tests: ZWSP and ZWNJ "same cut" stay low for all variants (the normaliser does not remove them yet).
+
+**Prediction check for Stage 2 vs the pilot:** none of the pilot predictions were meant for this case; the pilot
+conclusions (morph best on grammar, akshara too costly) hold in direction, but the compactness numbers are
+invalid until the character explosion is fixed.

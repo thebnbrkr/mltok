@@ -39,22 +39,26 @@ def main(argv=None) -> None:
     ap.add_argument("--variants", nargs="+", default=list(VARIANTS), choices=VARIANTS)
     ap.add_argument("--vocab", type=int, default=16000)
     ap.add_argument("--max-sentences", type=int)
+    ap.add_argument("--char-coverage", type=float, help="e.g. 0.9999: drop the rarest characters from training "
+                    "(SentencePiece-style); omit to keep every character (the SMC recipe)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--skip-existing", action="store_true")
     a = ap.parse_args(argv)
     lines = read_sentences(Path(a.data), a.max_sentences)
     print(f"{len(lines):,} training sentences", flush=True)
     for v in a.variants:
-        name = f"{v}-{a.vocab // 1000}k" + (f"-{a.max_sentences // 1000}ks" if a.max_sentences else "")
+        name = f"{v}-{a.vocab // 1000}k" + (f"-{a.max_sentences // 1000}ks" if a.max_sentences else "") + \
+            (f"-cov{a.char_coverage:g}" if a.char_coverage else "")
         out = Path(a.out) / name
         if a.skip_existing and (out / "meta.json").exists():
             print("skip", name)
             continue
         t0 = time.time()
-        pipe = train(v, lines, a.vocab)
+        pipe = train(v, lines, a.vocab, a.char_coverage)
         pipe.name = name
         pipe.save(out)
         (out / "train.json").write_text(json.dumps({"sentences": len(lines), "vocab": a.vocab,
+                                                    "char_coverage": a.char_coverage,
                                                     "seconds": time.time() - t0}))
         print(f"{name}: trained in {time.time() - t0:.0f} s", flush=True)
 

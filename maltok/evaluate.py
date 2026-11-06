@@ -173,7 +173,7 @@ def main(argv=None) -> None:
     ap.add_argument("--wiki", help="ml.sentences.parquet: also evaluate on sentences from held-out articles")
     ap.add_argument("--wiki-n", type=int, default=5000)
     ap.add_argument("--smc", help="released SMC tokenizer.json, evaluated as a reference")
-    ap.add_argument("--models", required=True, help="folder with one sub-folder per trained pipeline")
+    ap.add_argument("--models", required=True, nargs="+", help="folder(s) with one sub-folder per trained pipeline")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     sets = {"FLORES-200 Malayalam dev+devtest (translated news-style text)": flores_lines(Path(a.flores))}
@@ -182,7 +182,7 @@ def main(argv=None) -> None:
         sets[f"Malayalam Wikipedia, held-out articles ({a.wiki_n:,}-sentence sample; never used in training)"] = \
             read_sentences(Path(a.wiki), a.wiki_n, heldout=True)
     pipes = ([Pipeline.reference(Path(a.smc))] if a.smc else []) + \
-            [Pipeline.load(p) for p in sorted(Path(a.models).iterdir()) if (p / "meta.json").exists()]
+            [Pipeline.load(p) for m in a.models for p in sorted(Path(m).iterdir()) if (p / "meta.json").exists()]
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     md, everything = [], {}

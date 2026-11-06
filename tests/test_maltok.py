@@ -117,3 +117,14 @@ def test_evaluate_reports_robustness(pipes):
     r = evaluate(pipes["norm"], SENTENCES[:9], words)
     for k in ("robust_zwsp", "robust_zwnj", "typo_extra", "typo_frag"):
         assert k in r
+
+
+def test_char_coverage_keeps_rare_characters_out_of_the_vocabulary():
+    from maltok.pipeline import covered_chars
+    lines = SENTENCES + ["漢字 中文 한국어"]                       # rare foreign characters, once each
+    keep = covered_chars(lines, 0.999)
+    assert "漢" not in keep and "മ" in keep and "‍" in keep
+    p = train("norm", lines, vocab_size=300, coverage=0.999)
+    vocab = p.tok.get_vocab()
+    assert not any("漢" in t or "한" in t for t in vocab)
+    assert word_cuts(p, "മരത്തിൽ")[1]                           # Malayalam still spelled correctly

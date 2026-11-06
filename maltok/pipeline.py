@@ -44,6 +44,22 @@ def akshara_map(lines, size: int = PUA_SIZE) -> dict[str, str]:
     return {a: chr(PUA_START + i) for i, (a, _) in enumerate(counts.most_common(size))}
 
 
+def covered_chars(lines, coverage: float) -> set[str]:
+    """The most frequent characters that together make up `coverage` of all characters (as SentencePiece's
+    character_coverage). Malayalam letters, ASCII, ZWJ and ZWNJ are always kept. Without this, the HF Unigram
+    trainer puts every character it sees into the vocabulary: on the full Wikipedia corpus 7,640 of 16,000
+    slots went to single foreign characters (2,563 of them CJK)."""
+    counts = Counter(ch for line in lines for ch in line)
+    total, keep, run = sum(counts.values()), set(), 0
+    for ch, c in counts.most_common():
+        if run >= coverage * total:
+            break
+        keep.add(ch)
+        run += c
+    keep |= {chr(c) for c in range(0x0D00, 0x0D80)} | {chr(c) for c in range(0x20, 0x7F)} | {"\u200c", "\u200d"}
+    return keep
+
+
 class Pipeline:
     """Text -> pieces (strings in the prepared text, word-start marker kept) for one variant."""
 
@@ -95,8 +111,13 @@ class Pipeline:
         return cls(Tokenizer.from_file(str(tokenizer_json)), "base", None, name)
 
 
-def train(variant: str, lines: list[str], vocab_size: int = 16000) -> Pipeline:
+def train(variant: str, lines: list[str], vocab_size: int = 16000, coverage: float | None = None) -> Pipeline:
+    """coverage=None trains on every character (the SMC recipe); e.g. 0.9999 drops the rarest characters from
+    the training text so they cannot take vocabulary slots (they become <unk> when met later)."""
     assert variant in VARIANTS, variant
+    if coverage:
+        keep = covered_chars(lines, coverage)
+        lines = ["".join(ch for ch in line if ch in keep) for line in lines]
     amap = akshara_map(lines) if variant == "akshara" else None
     pipe = Pipeline(new_tokenizer(variant), variant, amap)
     if variant == "morph":

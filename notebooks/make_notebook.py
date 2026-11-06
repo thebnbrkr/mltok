@@ -89,6 +89,15 @@ Checks that everything runs and how long each variant takes. Pilot results are n
 !python -m maltok.evaluate --flores {DATA}/flores200_dataset --smc {SMC} --wiki {WIKI} --models {OUT}/full --out {OUT}/full_eval
 """),
     md("""
+## Stage 3: full corpus with 99.99% character coverage
+
+The full-corpus run above spends about half of its 16k vocabulary on single foreign characters (Chinese, Korean, Arabic, ...), because the trainer adds every character it sees. Here the rarest characters (the last 0.01% of character occurrences) are dropped from training, as SentencePiece's `character_coverage` does. The evaluation includes the Stage 2 tokenizers, so both are scored the same way, with the harder robustness tests.
+"""),
+    code("""
+!python -m maltok.train --data {WIKI} --char-coverage 0.9999 --out {OUT}/full_cov --skip-existing
+!python -m maltok.evaluate --flores {DATA}/flores200_dataset --wiki {WIKI} --smc {SMC} --models {OUT}/full {OUT}/full_cov --out {OUT}/full_cov_eval
+"""),
+    md("""
 ## How to read it (from `RESEARCH_LOG.md`)
 
 - **Better** means better on the morphology and robustness columns **without** a meaningfully worse tokens-per-word (within 5%).

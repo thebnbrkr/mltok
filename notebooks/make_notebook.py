@@ -55,8 +55,21 @@ print('CPUs:', os.cpu_count())
     md("Data: FLORES-200 (evaluation only), the released SMC tokenizer, and the Wikipedia sentences (training)."),
     code("""
 from huggingface_hub import hf_hub_download
-if not os.path.exists(f'{DATA}/flores200_dataset'):
-    !cd {DATA} && curl -s -L -o flores.tar.gz https://dl.fbaipublicfiles.com/nllb/flores200_dataset.tar.gz && tar -xzf flores.tar.gz flores200_dataset/dev/mal_Mlym.dev flores200_dataset/devtest/mal_Mlym.devtest && rm flores.tar.gz
+import tarfile, urllib.request
+FLORES = f'{DATA}/flores200_dataset'
+if not os.path.exists(f'{FLORES}/dev/mal_Mlym.dev'):
+    tgz = f'{DATA}/flores.tar.gz'
+    urllib.request.urlretrieve('https://dl.fbaipublicfiles.com/nllb/flores200_dataset.tar.gz', tgz)
+    with tarfile.open(tgz) as t:   # member names start with './'; match on the end so any tar layout works
+        for m in t.getmembers():
+            if m.name.endswith(('/dev/mal_Mlym.dev', '/devtest/mal_Mlym.devtest')):
+                m.name = m.name.lstrip('./')
+                t.extract(m, DATA)
+    os.remove(tgz)
+for f in ('dev/mal_Mlym.dev', 'devtest/mal_Mlym.devtest'):
+    n = sum(1 for _ in open(f'{FLORES}/{f}', encoding='utf-8'))
+    assert n > 900, f'{f}: only {n} lines'
+    print(f, n, 'lines')
 SMC = hf_hub_download('smcproject/malayalam-unigram-tokenizer', 'tokenizer.json', local_dir=f'{DATA}/smc')
 WIKI = hf_hub_download('smcproject/ml-wiki-sentences', 'ml.sentences.parquet', repo_type='dataset', local_dir=DATA)
 !ls -la {DATA}

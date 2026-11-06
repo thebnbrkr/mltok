@@ -79,3 +79,16 @@ is in both training and test; 5,000-sentence sample). Same measures, reported se
 
 Compounds (his ആനപ്പുറത്തു കയറി example) are left for the native-speaker gold set: mlmorph's compound analyses
 need a separate boundary rule.
+
+---
+
+## 2026-11-06 (later): Pilot on Colab: training works, evaluation crashed (fixed)
+
+Pilot (200k sentences, 16k vocabulary) training times on Colab: base 110 s, norm 113 s, morph 190 s (mlmorph
+analysis included), akshara 70 s.
+
+**Bug:** the evaluation could not find the FLORES files. The archive's member names start with `./`
+(`./flores200_dataset/dev/mal_Mlym.dev`). The Mac's bsdtar matched them without the `./`, Colab's GNU tar did not,
+so nothing was extracted, and `curl -s` hid the failure. **Fix:** the data cell now extracts with Python's
+`tarfile`, matching on the end of the name, and asserts that both files have the expected number of lines.
+The trained pilot tokenizers are unaffected; re-running the stage with `--skip-existing` only evaluates.

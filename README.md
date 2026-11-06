@@ -51,3 +51,17 @@ Limits: the stem boundaries are silver (constructed, not hand-checked), nouns on
 - Tokenizer variants: chillu-normalised; syllable-safe; mlmorph-guided boundaries.
 - Rules from public-domain grammars: Keralapāṇinīyam (1896/1917; Malayalam Wikisource), Gundert's grammar (1868)
   and dictionary (1872).
+
+## Old letters and encoding variants (`scripts/old_letters.py data`)
+
+The same word written in old or alternative encodings is tokenized differently, and mlmorph fails on the old forms:
+
+| form | SMC Unigram | Pocket 4k | mlmorph |
+|---|---|---|---|
+| ധൎമ്മം (dot reph, old) / ധർമ്മം (chillu r) | 4 / 2 pieces | 4 / 4 | — / analysed |
+| അവന്‍റെ (ZWJ) / അവന്റെ / അവൻ്റെ (three ന്റ encodings) | 3 / 1 (+▁) / 3, the last as `ൻ · ്റെ` | 2 / 2 / 2 | — / analysed / analysed |
+| ൧൯൯൬ (Malayalam digits) | one piece per digit | UNK | — |
+| ഩ, ഺ, ൹ (archaic letters, date mark) | kept | UNK | foreign word |
+
+So a canonical normaliser is needed before tokenizing (and before mlmorph): dot reph → chillu r, ZWJ chillus →
+atomic chillus, one ന്റ encoding, Malayalam digits → number words (mlmorph's number generator can spell them out).

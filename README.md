@@ -15,6 +15,12 @@ curl -L -o pocket_multilingual.model https://huggingface.co/Thanushttk/pocket-tt
 cd ..
 ```
 
+## Tokenizer study (Colab)
+
+`notebooks/tokenizer_colab.ipynb` trains the variants in `maltok/` (normaliser, mlmorph boundaries, akshara-safe)
+on `smcproject/ml-wiki-sentences` and evaluates them (`python -m maltok.evaluate`). Plan, predictions and results:
+`RESEARCH_LOG.md`. Tests: `python -m pytest -q`.
+
 ## Scripts
 
 | script | what it measures |

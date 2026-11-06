@@ -1,4 +1,7 @@
-tiktoken
 tokenizers
 sentencepiece
+tiktoken
 mlmorph
+pyarrow
+huggingface_hub
+pytest

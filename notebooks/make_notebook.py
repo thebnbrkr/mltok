@@ -21,19 +21,19 @@ CELLS = [
     md("""
 # Malayalam tokenizer: can we improve on the SMC Unigram tokenizer?
 
-Trains four variants of Santhosh Thottingal's recipe (HF `tokenizers` Unigram, 16k, NFC + Metaspace) on the 2.25M-sentence Malayalam Wikipedia corpus (`smcproject/ml-wiki-sentences`) and evaluates them, with the released SMC tokenizer as a reference, on FLORES-200 Malayalam and on sentences from held-out Wikipedia articles (~1% of articles, never used in training):
+Trains five variants of Santhosh Thottingal's recipe (HF `tokenizers` Unigram, 16k, NFC + Metaspace) on the 2.25M-sentence Malayalam Wikipedia corpus (`smcproject/ml-wiki-sentences`) and evaluates them, with the released SMC tokenizer as a reference, on FLORES-200 Malayalam and on sentences from held-out Wikipedia articles (~1% of articles, never used in training):
 
 | variant | what is done to the text first |
 |---|---|
 | `base` | nothing: the SMC recipe retrained on this corpus (separates data from recipe) |
 | `norm` | normaliser: 2008-era chillus → atomic chillus, three spellings of ന്റ → one |
 | `morph` | `norm` + pieces never cross mlmorph's stem\\|suffix boundary |
-| `compound` | `morph` + pieces never cross compound and sandhi joins (സമാസം, സന്ധി: ആന\\|പ്പുറ\\|ത്തു) |
+| `compound` | `morph` + pieces never cross compound and sandhi joins (സമാസം, സന്ധി: ആന\\|പ്പുറ\\|ത്തു); words mlmorph does not know are split only if both parts are real words (കാട്ടാന → കാട് + ആന) |
 | `akshara` | `norm` + pieces are whole aksharas (each akshara mapped to one private-use character) |
 
 Predictions are written in `RESEARCH_LOG.md` before this runs.
 
-**Runtime:** CPU only. A runtime with several CPUs and high RAM is best (mlmorph analysis runs in parallel; Unigram training on 2.25M sentences needs several GB). Results go to `/content/results`; the last cell downloads them.
+**Runtime:** CPU only; a GPU is not used. A T4 runtime works but has 2 CPUs, so the full run takes a few hours (several CPUs and high RAM are faster). Stages 1 and 2 are off by default: their results are logged in `RESEARCH_LOG.md`. Stage 3 is the main run. Finished tokenizers are skipped on re-run, so after a disconnect just run the cells again (upload the last `results.zip` to `/content` and unzip it first if the runtime was deleted). Results go to `/content/results`; the last cell downloads them.
 """),
     code("""
 import os, sys, subprocess
@@ -76,27 +76,34 @@ WIKI = hf_hub_download('smcproject/ml-wiki-sentences', 'ml.sentences.parquet', r
 !ls -la {DATA}
 """),
     md("""
-## Stage 1: pilot on 200k sentences
+## Stage 1: pilot on 200k sentences (off by default; results logged)
 
 Checks that everything runs and how long each variant takes. Pilot results are not used for conclusions.
 """),
     code("""
-!python -m maltok.train --data {WIKI} --max-sentences 200000 --out {OUT}/pilot --skip-existing
-!python -m maltok.evaluate --flores {DATA}/flores200_dataset --smc {SMC} --wiki {WIKI} --models {OUT}/pilot --out {OUT}/pilot_eval
+RUN_PILOT = False
+if RUN_PILOT:
+  !python -m maltok.train --data {WIKI} --max-sentences 200000 --out {OUT}/pilot --skip-existing
+  !python -m maltok.evaluate --flores {DATA}/flores200_dataset --smc {SMC} --wiki {WIKI} --models {OUT}/pilot --out {OUT}/pilot_eval
 """),
-    md("## Stage 2: full corpus (2.25M sentences), 16k vocabulary"),
+    md("## Stage 2: full corpus without character coverage (off by default; results logged)"),
     code("""
-!python -m maltok.train --data {WIKI} --out {OUT}/full --skip-existing
-!python -m maltok.evaluate --flores {DATA}/flores200_dataset --smc {SMC} --wiki {WIKI} --models {OUT}/full --out {OUT}/full_eval
+RUN_OLD_FULL = False
+if RUN_OLD_FULL:
+  !python -m maltok.train --data {WIKI} --out {OUT}/full --skip-existing
+  !python -m maltok.evaluate --flores {DATA}/flores200_dataset --smc {SMC} --wiki {WIKI} --models {OUT}/full --out {OUT}/full_eval
 """),
     md("""
 ## Stage 3: full corpus with 99.99% character coverage
 
-The full-corpus run above spends about half of its 16k vocabulary on single foreign characters (Chinese, Korean, Arabic, ...), because the trainer adds every character it sees. Here the rarest characters (the last 0.01% of character occurrences) are dropped from training, as SentencePiece's `character_coverage` does. This stage also trains the new `compound` variant and scores every tokenizer on the പിരിച്ചെഴുതുക gold set (`gold/pirichezhuthuka.tsv`, a draft). The evaluation includes the Stage 2 tokenizers, so both are scored the same way, with the harder robustness tests.
+The full-corpus run above spends about half of its 16k vocabulary on single foreign characters (Chinese, Korean, Arabic, ...), because the trainer adds every character it sees. Here the rarest characters (the last 0.01% of character occurrences) are dropped from training, as SentencePiece's `character_coverage` does. This stage also trains the new `compound` variant and scores every tokenizer on the പിരിച്ചെഴുതുക gold set (`gold/pirichezhuthuka.tsv`, a draft) and on Devadath et al.'s sandhi gold data (downloaded at run time; GPL-3.0, not redistributed), with the harder robustness tests. Variants are trained in order of importance (norm, compound, morph, base, akshara), so the key ones finish first. On a T4, set `MAX_SENTENCES = 1_000_000` to roughly halve the time.
 """),
     code("""
-!python -m maltok.train --data {WIKI} --char-coverage 0.9999 --out {OUT}/full_cov --skip-existing
-!python -m maltok.evaluate --flores {DATA}/flores200_dataset --wiki {WIKI} --smc {SMC} --models {OUT}/full {OUT}/full_cov --out {OUT}/full_cov_eval
+MAX_SENTENCES = None            # None = all 2.23M training sentences; e.g. 1_000_000 on a slow runtime
+limit = f'--max-sentences {MAX_SENTENCES}' if MAX_SENTENCES else ''
+!python -m maltok.train --data {WIKI} --char-coverage 0.9999 --variants norm compound morph base akshara {limit} --out {OUT}/full_cov --skip-existing
+models = ' '.join(d for d in (f'{OUT}/full', f'{OUT}/full_cov') if os.path.isdir(d))
+!python -m maltok.evaluate --flores {DATA}/flores200_dataset --wiki {WIKI} --smc {SMC} --devadath {DATA}/devadath --models {models} --out {OUT}/full_cov_eval
 """),
     md("""
 ## How to read it (from `RESEARCH_LOG.md`)

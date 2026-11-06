@@ -256,3 +256,45 @@ Insertion (ആഗമം) is the weak case: tokenizers cut തിരുവ|ോണ
 
 **Predictions for `compound` in Stage 3 (before running):** compounds clean ≥ 80% (partly circular, as for morph);
 gold joins found ≥ 85% and clean ≥ 80%; tok/word within 2% of `morph`.
+
+---
+
+## 2026-11-06 (later): Whole-word-first splitting, a fallback for unknown words, and Devadath's gold data
+
+**Rule (from the discussion):** if a string is a word by itself, keep it whole; otherwise split only where every
+part is a real word; prefer the fewest parts. mlmorph already does this for words it knows (it ranks analyses with
+fewer parts first): കുട്ടി stays whole; തീപ്പെട്ടി stays whole although mlmorph also knows തീ + പെട്ടി; ആനപ്പുറം
+splits into ആന + പുറം.
+
+**New: fallback for words mlmorph cannot analyse** (~21% of distinct FLORES words). The sandhi formulas, reversed,
+propose splits with the parts restored: ലോപം (C·Vsign ⇒ C് + V, also ു, chillu and anusvara forms), ആഗമം
+((യ|വ)·Vsign ⇒ + V), ദ്വിത്വം (C്C ⇒ + C; with elision C്C·Vsign ⇒ C് + V), ആദേശം (ന്മ ⇒ ൽ + മ, ണ്ണ ⇒ ൺ + ന,
+ന്ത ⇒ ം + ത, മ്പ ⇒ ം + പ), and a plain split after a word-final letter. A split is accepted only if both parts
+are known words: mlmorph analyses them, or they occur ≥ 5 times as words in the training corpus (the lexicon is
+saved with the tokenizer). The most balanced accepted split wins; otherwise the word stays whole. Two parts at
+most. Examples: കാട്ടാന → കാട് + ആന (cut കാ|ട്ടാന), ശതമാനംമാത്രമാണ് → ശതമാനം + മാത്രമാണ്; നന്മ stays whole (‑മ is a
+suffix, not a word); രാപ്പകൽ is missed (രാവ് loses its വ്). Used only by the `compound` variant; the silver
+evaluation columns still use mlmorph alone.
+
+**Gold set:** new column `whole_ok` (yes for 9 lexicalised entries: തീപ്പെട്ടി, മലപ്പുറം, കടൽക്കര, കണ്ണീർ,
+വെണ്ണിലാവ്, തിരുവോണം, തിരുവനന്തപുരം, ചെന്താമര, നന്മ). Keeping such a word whole counts as correct.
+
+**Devadath et al.'s gold data** (github.com/Devadath/MLP_Word_Segementation, GPL-3.0; downloaded at run time,
+not redistributed): 13,636 gold words (19,669 split points) and a 999-word validation set (1,400 points),
+character-level SP/NSP labels, cut after the SP character, external sandhi only (word + word), glide on the left
+(തുകയ|ാണ്). Scored as recall only (share of gold points cut; share of words with every point cut), accepting
+both glide conventions and the akshara start. Two splitter rows are scored too: mlmorph compounds alone, and
+mlmorph + fallback. This is the first common-ground score of these splitters we know of: the published Malayalam
+splitters (Nair & Peter 2011 ~90%, Devadath et al. 2014 91.1% on 260 words, Kuncham et al. 2015 90.5%) each
+used their own test data.
+
+**Notebook:** Stages 1 and 2 off by default (results above); Stage 3 trains norm, compound, morph, base,
+akshara (in that order) with 99.99% character coverage; `MAX_SENTENCES` lets a 2-CPU T4 runtime use fewer
+sentences.
+
+**Predictions (before running):**
+- Devadath gold, point recall: splitter mlmorph + fallback > mlmorph alone by ≥ 10 points (many gold words are
+  unknown to mlmorph); the compound tokenizer has the highest point recall of the tokenizers; smc-released and
+  base/norm below 70%.
+- The fallback costs ≤ 2% tok/word over `morph`.
+- Gold set: with whole_ok, compound reaches ≥ 85% joins found.

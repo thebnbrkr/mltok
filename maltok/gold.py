@@ -4,8 +4,9 @@ gold/pirichezhuthuka.tsv lists joined words with their parts and sandhi kind. Ea
 as maltok.morph places compound joins (where the next part's surface form starts; exact, or moved back to its
 akshara); when the next part cannot be found (ആദേശം can change its first letter: കൺ + നീർ -> കണ്ണീർ), the
 join falls after the longest common prefix with the previous part, at an akshara start. A word counts as
-"join found" if the tokenizer cuts at the exact or the akshara-start position of every join, and as "clean" if
-in addition it does not cut inside the first part.
+"join found" if the tokenizer cuts at the exact or the akshara-start position of every join, or, for rows with
+whole_ok = yes (the joined form is itself a dictionary word), if it keeps the word as one piece; "clean" if in
+addition it does not cut inside the first part.
 """
 from __future__ import annotations
 
@@ -53,8 +54,9 @@ def evaluate(pipe, rows: list[dict]) -> dict:
         cuts, ok = word_cuts(pipe, r["word"])
         if js is None or not ok:
             continue
-        found = all(e in cuts or a in cuts for e, a in js)
-        clean = found and not any(0 < c < min(js[0]) for c in cuts)
+        whole = r.get("whole_ok") == "yes" and not cuts
+        found = whole or all(e in cuts or a in cuts for e, a in js)
+        clean = whole or (found and not any(0 < c < min(js[0]) for c in cuts))
         for key in (r["sandhi"], "all"):
             per[key][0] += 1
             per[key][1] += found

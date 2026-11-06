@@ -7,7 +7,8 @@ They differ only in what is done to the text first:
   base      nothing (the SMC recipe retrained on our data)
   norm      maltok.text.normalize (2008-era chillus, ന്റ spellings)
   morph     norm + a forced boundary at mlmorph's stem|suffix cut (pieces never cross it)
-  compound  morph + forced boundaries at compound and sandhi joins (സമാസം, സന്ധി; ആന|പ്പുറ|ത്തു)
+  compound  morph + forced boundaries at compound and sandhi joins (സമാസം, സന്ധി; ആന|പ്പുറ|ത്തു), plus a
+            dictionary-checked sandhi split for words mlmorph does not know (കാട്ടാന -> കാട് + ആന)
   akshara   norm + every akshara mapped to one private-use character, so pieces are whole aksharas
             (aksharas outside the map, i.e. rare ones, stay as characters)
 """
@@ -74,7 +75,8 @@ class Pipeline:
         if self.variant != "base":
             text = normalize(text)
         if self.variant in ("morph", "compound"):
-            text = morph.segment_text(text, compounds=self.variant == "compound")
+            text = morph.segment_text(text, compounds=self.variant == "compound",
+                                      use_fallback=self.variant == "compound")
         if self.variant == "akshara":
             text = MALAYALAM_RUN.sub(lambda m: "".join(self.amap.get(a, a) for a in aksharas(m.group())), text)
         return text
@@ -98,12 +100,16 @@ class Pipeline:
         (out / "meta.json").write_text(json.dumps({"variant": self.variant, "name": self.name}))
         if self.amap:
             (out / "akshara_map.json").write_text(json.dumps(self.amap, ensure_ascii=False))
+        if self.variant == "compound" and morph._lexicon:
+            (out / "lexicon.txt").write_text("\n".join(sorted(morph._lexicon)), encoding="utf-8")
 
     @classmethod
     def load(cls, path: Path) -> "Pipeline":
         path = Path(path)
         meta = json.loads((path / "meta.json").read_text())
         amap = json.loads((path / "akshara_map.json").read_text()) if (path / "akshara_map.json").exists() else None
+        if meta["variant"] == "compound" and (path / "lexicon.txt").exists():
+            morph.set_lexicon((path / "lexicon.txt").read_text(encoding="utf-8").split("\n"))
         return cls(Tokenizer.from_file(str(path / "tokenizer.json")), meta["variant"], amap, meta.get("name"))
 
     @classmethod
@@ -122,8 +128,10 @@ def train(variant: str, lines: list[str], vocab_size: int = 16000, coverage: flo
     amap = akshara_map(lines) if variant == "akshara" else None
     pipe = Pipeline(new_tokenizer(variant), variant, amap)
     if variant in ("morph", "compound"):
-        words = (run for line in lines for run in MALAYALAM_RUN.findall(normalize(line)))
-        morph.precompute(words)
+        counts = Counter(run for line in lines for run in MALAYALAM_RUN.findall(normalize(line)))
+        if variant == "compound":
+            morph.set_lexicon(w for w, c in counts.items() if c >= morph.LEX_MIN)
+        morph.precompute(counts, with_fallback=variant == "compound")
     trainer = trainers.UnigramTrainer(vocab_size=vocab_size, special_tokens=SPECIAL, unk_token="<unk>")
     pipe.tok.train_from_iterator((pipe.prepare(l) for l in lines), trainer=trainer, length=len(lines))
     return pipe

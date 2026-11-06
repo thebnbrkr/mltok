@@ -189,6 +189,7 @@ def main(argv=None) -> None:
     ap.add_argument("--smc", help="released SMC tokenizer.json, evaluated as a reference")
     ap.add_argument("--models", required=True, nargs="+", help="folder(s) with one sub-folder per trained pipeline")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--devadath", help="folder for Devadath et al.'s sandhi gold data (downloaded if missing)")
     a = ap.parse_args(argv)
     sets = {"FLORES-200 Malayalam dev+devtest (translated news-style text)": flores_lines(Path(a.flores))}
     if a.wiki:
@@ -202,7 +203,7 @@ def main(argv=None) -> None:
     md, everything = [], {}
     for title, lines in sets.items():
         words = sorted({w for l in lines for w in MALAYALAM_RUN.findall(normalize(l)) if len(w) > 1})
-        morph.precompute(words)
+        morph.precompute(words, with_fallback=any(p.variant == "compound" for p in pipes))
         results = [evaluate(p, lines, words) for p in pipes]
         n = results[0]
         md += [f"### {title}", "",
@@ -228,6 +229,28 @@ def main(argv=None) -> None:
             md.append(f"| {name} | " + " | ".join(cells) + " |")
         md.append("")
         everything["gold"] = res
+    if a.devadath:
+        from . import devadath
+        files = devadath.download(Path(a.devadath))
+        md += ["### Devadath et al. sandhi gold data (external sandhi, word + word)", "",
+               "Recall only: share of gold split points where the cutter cuts (point), and of words with every "
+               "gold point cut (word). Both glide conventions count. Words a tokenizer re-spells (normalisation) "
+               "are skipped.", ""]
+        cutters = [(p.name, (lambda p: lambda w: (lambda c: c[0] if c[1] else None)(word_cuts(p, w)))(p))
+                   for p in pipes]
+        cutters += [("splitter: mlmorph compounds", lambda w: set((morph.compound(w) or ([], []))[1])),
+                    ("splitter: mlmorph + fallback", lambda w: set((morph.compound(w, True) or ([], []))[1]))]
+        dv = {}
+        for name, path in files.items():
+            items = devadath.load(path)
+            morph.precompute([w for w, _ in items], with_fallback=True)
+            dv[name] = {n: devadath.score(fn, items) for n, fn in cutters}
+        md += ["| cutter | " + " | ".join(f"{k}: point · word" for k in dv) + " |", "|---|" + "---|" * len(dv)]
+        for n, _ in cutters:
+            md.append(f"| {n} | " + " | ".join(f"{dv[k][n]['point_recall']:.1%} · {dv[k][n]['word_recall']:.1%} "
+                                                f"({dv[k][n]['words']:,})" for k in dv) + " |")
+        md.append("")
+        everything["devadath"] = dv
     (out / "eval.json").write_text(json.dumps(everything, indent=1, ensure_ascii=False))
     (out / "eval.md").write_text("\n".join(md))
     print("\n".join(md))

@@ -156,3 +156,48 @@ def test_compound_variant_trains_and_respects_joins(tmp_path):
     from maltok import gold
     r = gold.evaluate(p, gold.load())
     assert r["all"]["n"] >= 20 and 0 <= r["all"]["found"] <= 1
+
+
+def test_fallback_follows_the_whole_word_first_rule():
+    assert morph.fallback("കുട്ടി") is None                     # a word by itself: never split
+    assert morph.fallback("കാട്ടാന")[2:] == ("കാട്", "ആന")      # unknown to mlmorph; both parts are words
+    assert morph.fallback("നന്മ") is None                       # ‑മ is a suffix, not a word: keep whole
+    assert morph.compound("തീപ്പെട്ടി") is None                 # lexicalised: mlmorph prefers the whole word
+
+
+def test_gold_whole_ok_rows_accept_keeping_the_word_whole():
+    from maltok import gold
+    rows = {r["word"]: r for r in gold.load()}
+    assert rows["തീപ്പെട്ടി"]["whole_ok"] == "yes" and rows["ആനപ്പുറം"]["whole_ok"] == "no"
+
+
+def test_devadath_format_and_scoring(tmp_path):
+    from maltok import devadath
+    f = tmp_path / "d"
+    f.write_text("അ ത ു ക ൊ ണ ് ട ാ ണ ്\tNSP NSP SP NSP NSP NSP NSP SP NSP NSP NSP\n"
+                 "ത ു ക യ ാ ണ ്\tNSP NSP NSP SP NSP NSP NSP\n", encoding="utf-8")
+    items = devadath.load(f)
+    assert items[0] == ("അതുകൊണ്ടാണ്", [3, 8]) and items[1] == ("തുകയാണ്", [4])
+    assert devadath.hit("തുകയാണ്", 4, {3})                     # glide on the right also counts
+    r = devadath.score(lambda w: {3, 8} if w.startswith("അ") else set(), items)
+    assert r["point_recall"] == 2 / 3 and r["word_recall"] == 0.5
+
+
+def test_evaluate_command_end_to_end(tmp_path, pipes):
+    from maltok import devadath
+    from maltok.evaluate import main
+    fl = tmp_path / "flores"
+    for split in ("dev", "devtest"):
+        (fl / split).mkdir(parents=True)
+        (fl / split / f"mal_Mlym.{split}").write_text("\n".join(SENTENCES[:9]), encoding="utf-8")
+    models = tmp_path / "models"
+    for v in ("norm", "compound"):
+        pipes[v].save(models / v) if v in pipes else train(v, SENTENCES, vocab_size=300).save(models / v)
+    dv = tmp_path / "dv"
+    dv.mkdir()
+    for f in devadath.FILES.values():                       # pre-filled, so nothing is downloaded
+        (dv / f).write_text("ത ു ക യ ാ ണ ്\tNSP NSP NSP SP NSP NSP NSP\n", encoding="utf-8")
+    out = tmp_path / "out"
+    main(["--flores", str(fl), "--models", str(models), "--devadath", str(dv), "--out", str(out)])
+    md = (out / "eval.md").read_text(encoding="utf-8")
+    assert "Devadath" in md and "പിരിച്ചെഴുതുക" in md and "compounds clean" in md and "stray ZWSP" in md

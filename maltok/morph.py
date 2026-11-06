@@ -1,4 +1,5 @@
-"""Word-internal boundaries from mlmorph (Thottingal's FST analyser): stem | suffix, and compound joins.
+"""Word-internal boundaries from mlmorph (Thottingal's FST analyser): stem | suffix, compound joins, and a
+dictionary-checked sandhi fallback for words mlmorph does not know.
 
 Single stem. For a word whose best analysis is one root with POS n, np or v followed only by tags
 (e.g. മരം<n><locative>, പ്രഖ്യാപിക്കുക<v><past>), the stem ends at the longest common prefix of the
@@ -11,9 +12,18 @@ Compounds and sandhi (സമാസം, സന്ധി; what പിരിച്�
 (ആന<n><adj>പുറം<n><locative>, കാണുക<v><past>ഇല്ല<neg>), each later root is located in the word by the start
 of its surface form: the lemma without the verb ending ‑ുക and without a final anusvara, chillu or virama,
 with an initial vowel written as its vowel sign (ഇല്ല -> ില്ല) or dropped (അ). The join is where that form
-starts, so a doubled consonant (ആന|പ്പുറം) or an inserted glide യ/വ (മഴ|യില്ല) stays with the following part. A join that
-would split a consonant cluster moves back to the start of its akshara. If the last root is an inflected
-noun or verb, its stem | suffix boundary is added too (ആന | പ്പുറ | ത്തു). All of these are silver.
+starts, so a doubled consonant (ആന|പ്പുറം) or an inserted glide യ/വ (മഴ|യില്ല) stays with the following part.
+A join that would split a consonant cluster moves back to the start of its akshara. If the last root is an
+inflected noun or verb, its stem | suffix boundary is added too (ആന | പ്പുറ | ത്തു).
+
+mlmorph ranks analyses with fewer parts first, so a word that is a word by itself stays whole (കുട്ടി; also
+lexicalised compounds such as തീപ്പെട്ടി, which it also knows as തീ + പെട്ടി).
+
+Fallback (words mlmorph cannot analyse at all, e.g. കാട്ടാന): the sandhi formulas propose splits, each with the
+parts restored (ട്ട|ാ -> ട് + ആ, doubled consonant -> single, glide dropped, ന്മ -> ൽ + മ, ...); a split is
+accepted only if both parts are known words (mlmorph analyses them, or they occur at least LEX_MIN times as
+words in the training corpus). Among accepted splits the most balanced one wins; otherwise the word stays
+whole. Two parts at most. All of these boundaries are silver.
 """
 from __future__ import annotations
 
@@ -28,9 +38,16 @@ _SINGLE = re.compile(r"([^<]+)<(n|np|v)>((?:<[^>]+>)+)")
 _ROOTS = re.compile(r"([^<]+)((?:<[^>]+>)+)")
 _VOWEL_SIGN = {"ആ": "ാ", "ഇ": "ി", "ഈ": "ീ", "ഉ": "ു", "ഊ": "ൂ", "ഋ": "ൃ", "എ": "െ", "ഏ": "േ",
                "ഐ": "ൈ", "ഒ": "ൊ", "ഓ": "ോ", "ഔ": "ൌ"}
+_SIGN_VOWEL = {v: k for k, v in _VOWEL_SIGN.items()}
+_CHILLU = {"ണ": "ൺ", "ന": "ൻ", "ര": "ർ", "ല": "ൽ", "ള": "ൾ", "ക": "ൿ"}
+_SUBST = {"ന്മ": ("ൽ", "മ"), "ണ്ണ": ("ൺ", "ന"), "ന്ത": ("ം", "ത"), "മ്പ": ("ം", "പ")}   # ആദേശം, reversed
 _FINAL = "ംൺൻർൽൾൿ" + VIRAMA     # anusvara, chillus, virama
+_CONS = {chr(c) for c in range(0x0D15, 0x0D3B)}
+LEX_MIN = 5
 _analyser = None
 _cache: dict = {}            # word -> best analysis string or None (the slow mlmorph call)
+_fb_cache: dict = {}         # word -> (cut, rule, left, right) or None, for words mlmorph cannot analyse
+_lexicon: set = set()        # corpus words seen at least LEX_MIN times (set_lexicon)
 
 
 def _get():
@@ -52,17 +69,85 @@ def analysis(word: str) -> str | None:
     return _cache[word]
 
 
-def _chunk(words):
-    return [(w, _analyse(w)) for w in words]
+def set_lexicon(words) -> None:
+    """Known corpus words for the fallback (an iterable of words already filtered by frequency)."""
+    global _lexicon
+    _lexicon = set(words)
 
 
-def precompute(words, processes: int | None = None, chunk: int = 2000) -> int:
-    """Fill the analysis cache for many words in parallel (mlmorph is the slow step)."""
-    todo = [w for w in set(words) if w and w not in _cache]
-    parts = [todo[i:i + chunk] for i in range(0, len(todo), chunk)]
+def known(part: str) -> bool:
+    if len(part) < 2:
+        return False
+    if part in _lexicon:
+        return True
+    a = analysis(part)
+    return bool(a) and not a.endswith("<fw>")
+
+
+def candidates(word: str) -> list[tuple[int, str, str, str]]:
+    """(surface cut, rule, restored left part, restored right part) for every place a sandhi formula fits."""
+    out, n = [], len(word)
+    for i in range(1, n - 1):            # restored parts must still be 2+ characters (checked later)
+        c, prev = word[i], word[i - 1]
+        if c in _SIGN_VOWEL and prev in _CONS:                      # C·Vsign: the vowel began the next word
+            right = _SIGN_VOWEL[c] + word[i + 1:]
+            out += [(i, "lopa", word[:i] + VIRAMA, right), (i, "lopa-u", word[:i] + "ു", right)]
+            if prev in _CHILLU:
+                out.append((i, "chillu", word[:i - 1] + _CHILLU[prev], right))
+            if prev == "മ":
+                out.append((i, "anusvara", word[:i - 1] + "ം", right))
+        if c in "യവ" and word[i + 1:i + 2] in _SIGN_VOWEL and prev != VIRAMA:   # ആഗമം: inserted glide
+            out.append((i, "agama", word[:i], _SIGN_VOWEL[word[i + 1]] + word[i + 2:]))
+        if c in _CONS and word[i + 1:i + 2] == VIRAMA and word[i + 2:i + 3] == c and prev != VIRAMA:  # ദ്വിത്വം
+            out.append((i, "dvitva", word[:i], word[i + 2:]))
+            if word[i + 3:i + 4] in _SIGN_VOWEL:                     # doubling + elision: കാ|ട്ടാന -> കാട് + ആന
+                out.append((i, "dvitva-lopa", word[:i] + c + VIRAMA, _SIGN_VOWEL[word[i + 3]] + word[i + 4:]))
+        for cluster, (l, r) in _SUBST.items():
+            if word.startswith(cluster, i):
+                out.append((i, "adesa", word[:i] + l, r + word[i + len(cluster):]))
+        if (c in _CONS or c in _VOWEL_SIGN) and (prev in _FINAL[:-1] or prev in _SIGN_VOWEL) and word[i + 1:i + 2] != VIRAMA:
+            out.append((i, "plain", word[:i], word[i:]))             # word-final letter, then a new word
+    return out
+
+
+def _fallback(word: str) -> tuple | None:
+    best = None
+    for cut, rule, left, right in candidates(word):
+        if len(left) >= 2 and len(right) >= 2 and known(left) and known(right):
+            score = min(len(left), len(right))
+            if best is None or score > best[0]:
+                best = (score, cut, rule, left, right)
+    return best[1:] if best else None
+
+
+def fallback(word: str) -> tuple | None:
+    """(cut, rule, left, right) for a word mlmorph cannot analyse, or None (keep whole)."""
+    if word not in _fb_cache:
+        _fb_cache[word] = _fallback(word) if analysis(word) is None else None
+    return _fb_cache[word]
+
+
+def _chunk(args):
+    words, with_fallback = args
+    out = []
+    for w in words:
+        a = _analyse(w)
+        _cache[w] = a
+        out.append((w, a, _fallback(w) if with_fallback and a is None else None))
+    return out
+
+
+def precompute(words, processes: int | None = None, chunk: int = 2000, with_fallback: bool = False) -> int:
+    """Fill the caches for many words in parallel (mlmorph is the slow step). The fallback uses the lexicon
+    set before this call (worker processes inherit it)."""
+    todo = [w for w in set(words) if w and (w not in _cache or (with_fallback and w not in _fb_cache))]
+    parts = [(todo[i:i + chunk], with_fallback) for i in range(0, len(todo), chunk)]
     with Pool(processes or os.cpu_count()) as pool:
         for part in pool.imap_unordered(_chunk, parts):
-            _cache.update(part)
+            for w, a, fb in part:
+                _cache[w] = a
+                if with_fallback:
+                    _fb_cache[w] = fb
     return len(todo)
 
 
@@ -116,15 +201,20 @@ def find_join(word: str, later_part: str, after: int, verb: bool = False) -> int
     return i if 0 < i < len(word) else None
 
 
-def compound(word: str) -> tuple | None:
-    """Multi-root words: ([joins as (exact, rounded)], cuts used for segmentation), or None."""
+def compound(word: str, use_fallback: bool = False) -> tuple | None:
+    """([joins as (exact, rounded)], cuts used for segmentation), or None. Multi-root mlmorph analyses; with
+    use_fallback, also the dictionary-checked sandhi split of a word mlmorph cannot analyse."""
     a = analysis(word)
+    starts = akshara_starts(word)
     if not a:
-        return None
+        fb = fallback(word) if use_fallback else None
+        if not fb:
+            return None
+        cut = fb[0]
+        return [(cut, max(s for s in starts if s <= cut))], [_safe(word, cut, starts)]
     roots = _ROOTS.findall(a)
     if len(roots) < 2 or "".join(r + t for r, t in roots) != a:
         return None
-    starts = akshara_starts(word)
     joins, cuts, prev = [], [], 0
     for (before, _), (lemma, tags) in zip(roots, roots[1:]):
         b = find_join(word, lemma, prev, verb=tags.startswith("<v>"))
@@ -147,10 +237,10 @@ def compound(word: str) -> tuple | None:
     return (joins, cuts) if cuts else None
 
 
-def segment_word(word: str, compounds: bool = False) -> str:
+def segment_word(word: str, compounds: bool = False, use_fallback: bool = False) -> str:
     cuts = []
     if compounds:
-        c = compound(word)
+        c = compound(word, use_fallback)
         if c:
             cuts = c[1]
     if not cuts:
@@ -161,5 +251,5 @@ def segment_word(word: str, compounds: bool = False) -> str:
     return word
 
 
-def segment_text(text: str, compounds: bool = False) -> str:
-    return MALAYALAM_RUN.sub(lambda m: segment_word(m.group(), compounds), text)
+def segment_text(text: str, compounds: bool = False, use_fallback: bool = False) -> str:
+    return MALAYALAM_RUN.sub(lambda m: segment_word(m.group(), compounds, use_fallback), text)

@@ -25,7 +25,7 @@ from pathlib import Path
 
 from . import morph
 from .pipeline import Pipeline
-from .text import MALAYALAM_RUN, NTA, OLD_CHILLU, akshara_starts, normalize, old_encoding
+from .text import MALAYALAM_RUN, NTA, OLD_CHILLU, VIRAMA, ZWNJ, akshara_starts, normalize, old_encoding
 
 WS = "▁"
 
@@ -44,6 +44,44 @@ def word_cuts(pipe: Pipeline, word: str) -> tuple[set[int], bool]:
         pos += len(p)
         cuts.add(pos)
     return cuts, "".join(pieces) == word
+
+
+ZWSP = "\u200B"
+VOWEL_SIGNS = set("\u0D3E\u0D3F\u0D40\u0D41\u0D42\u0D43\u0D46\u0D47\u0D48\u0D4A\u0D4B\u0D4C\u0D57")
+CONSONANTS = {chr(c) for c in range(0x0D15, 0x0D3B)}
+
+
+def _rng(word: str):
+    import random
+    import zlib
+    return random.Random(zlib.crc32(word.encode()))      # same perturbation for every tokenizer
+
+
+def with_zwsp(word: str) -> str | None:
+    """An invisible zero-width space at a random akshara boundary inside the word."""
+    cuts = sorted(c for c in akshara_starts(word) if 0 < c < len(word))
+    if not cuts:
+        return None
+    i = _rng(word).choice(cuts)
+    return word[:i] + ZWSP + word[i:]
+
+
+def with_zwnj(word: str) -> str | None:
+    """A zero-width non-joiner after a virama inside a conjunct (ക്ക -> ക്‌ക)."""
+    spots = [i + 1 for i in range(len(word) - 1) if word[i] == VIRAMA and word[i + 1] in CONSONANTS]
+    if not spots:
+        return None
+    i = _rng(word).choice(spots)
+    return word[:i] + ZWNJ + word[i:]
+
+
+def with_typo(word: str) -> str | None:
+    """One vowel sign deleted."""
+    spots = [i for i, ch in enumerate(word) if ch in VOWEL_SIGNS]
+    if not spots:
+        return None
+    i = _rng(word).choice(spots)
+    return word[:i] + word[i + 1:]
 
 
 def evaluate(pipe: Pipeline, lines: list[str], words: list[str]) -> dict:
@@ -98,21 +136,34 @@ def evaluate(pipe: Pipeline, lines: list[str], words: list[str]) -> dict:
     same = sum(split(old_encoding(w)) == split(w) for w in affected)
     r["robust"] = same / max(1, len(affected))
     r["robust_n"] = len(affected)
+    # harder perturbations no lookup table fixes: is the word still cut the same way (ignoring the inserted mark)?
+    for key, perturb, mark in (("zwsp", with_zwsp, ZWSP), ("zwnj", with_zwnj, ZWNJ)):
+        pairs = [(w, perturb(w)) for w in words]
+        pairs = [(w, v) for w, v in pairs if v]
+        ok = sum([q for q in (x.replace(mark, "") for x in split(v)) if q] == split(w) for w, v in pairs)
+        r[f"robust_{key}"] = ok / max(1, len(pairs))
+        r[f"robust_{key}_n"] = len(pairs)
+    extra = [len(split(t)) - len(split(w)) for w in words for t in [with_typo(w)] if t]
+    r["typo_extra"] = sum(extra) / max(1, len(extra))
+    r["typo_frag"] = sum(e >= 2 for e in extra) / max(1, len(extra))
+    r["typo_n"] = len(extra)
     return r
 
 
-COLUMNS = [("tok_per_word", "tok/word", "{:.2f}"), ("lone_ws", "lone ▁", "{:.1%}"), ("unk", "unk", "{:.2%}"),
-           ("renyi_eff", "Rényi eff.", "{:.3f}"), ("noun_whole", "nouns whole", "{:.1%}"),
-           ("noun_clean", "nouns clean", "{:.1%}"), ("noun_stem_cut", "noun stem cut", "{:.1%}"),
-           ("verb_whole", "verbs whole", "{:.1%}"), ("verb_clean", "verbs clean", "{:.1%}"),
-           ("akshara_cuts", "cuts in akshara", "{:.1%}"), ("robust", "2008 spelling same", "{:.1%}")]
+MAIN = [("tok_per_word", "tok/word", "{:.2f}"), ("lone_ws", "lone ▁", "{:.1%}"), ("unk", "unk", "{:.2%}"),
+        ("renyi_eff", "Rényi eff.", "{:.3f}"), ("noun_whole", "nouns whole", "{:.1%}"),
+        ("noun_clean", "nouns clean", "{:.1%}"), ("noun_stem_cut", "noun stem cut", "{:.1%}"),
+        ("verb_whole", "verbs whole", "{:.1%}"), ("verb_clean", "verbs clean", "{:.1%}"),
+        ("akshara_cuts", "cuts in akshara", "{:.1%}")]
+ROBUST = [("robust", "2008 spelling: same cut", "{:.1%}"), ("robust_zwsp", "stray ZWSP: same cut", "{:.1%}"),
+          ("robust_zwnj", "ZWNJ in conjunct: same cut", "{:.1%}"), ("typo_extra", "typo: extra tokens", "{:+.2f}"),
+          ("typo_frag", "typo: +2 or more tokens", "{:.1%}")]
 
 
-def table(results: list[dict]) -> str:
-    head = "| tokenizer | " + " | ".join(c[1] for c in COLUMNS) + " |"
-    rows = [head, "|---|" + "---|" * len(COLUMNS)]
+def table(results: list[dict], columns=MAIN) -> str:
+    rows = ["| tokenizer | " + " | ".join(c[1] for c in columns) + " |", "|---|" + "---|" * len(columns)]
     for r in results:
-        rows.append(f"| {r['name']} | " + " | ".join(f.format(r[k]) for k, _, f in COLUMNS) + " |")
+        rows.append(f"| {r['name']} | " + " | ".join(f.format(r[k]) for k, _, f in columns) + " |")
     return "\n".join(rows)
 
 
@@ -143,7 +194,10 @@ def main(argv=None) -> None:
         md += [f"### {title}", "",
                f"{len(lines):,} sentences, {len(words):,} distinct words; mlmorph-analysed stems: "
                f"{n['noun_n']:,} nouns, {n['verb_n']:,} verbs; {n['robust_n']:,} words with a chillu or ന്റ "
-               "for the robustness test.", "", table(results), ""]
+               "for the 2008-spelling test.", "", "**Compactness and morphology**", "", table(results), "",
+               f"**Robustness** (stray ZWSP: {n['robust_zwsp_n']:,} words; ZWNJ: {n['robust_zwnj_n']:,} words "
+               f"with a conjunct; typo, one vowel sign deleted: {n['typo_n']:,} words)", "",
+               table(results, ROBUST), ""]
         everything[title] = results
     (out / "eval.json").write_text(json.dumps(everything, indent=1, ensure_ascii=False))
     (out / "eval.md").write_text("\n".join(md))

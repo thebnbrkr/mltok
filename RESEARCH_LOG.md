@@ -134,3 +134,25 @@ the old metric, which for them already compares normalised text.
 By the decision rule (better on morphology and robustness, tok/word at most 5% worse), **morph passes** on both
 sets, **akshara fails** on compactness, and **norm** is a free robustness fix with no cost. The full-corpus run
 decides; the native-speaker gold set is still needed because rule 1 for morph is partly circular.
+
+---
+
+## 2026-11-06 (later): Harder robustness tests (added before the full-run evaluation)
+
+The 2008-spelling test is easy for our variants because the normaliser fixes exactly those cases. Three
+perturbations no lookup table fixes, applied to every FLORES/Wikipedia word (same random position for every
+tokenizer):
+1. **stray zero-width space (ZWSP, U+200B)** inserted at an akshara boundary (copy-paste debris);
+2. **ZWNJ after a virama inside a conjunct** (ക്ക → ക്‌ക), as some older fonts and keyboards produce;
+3. **typo:** one vowel sign deleted.
+Measures: share of words still cut the same way (ignoring the inserted character); for typos, extra tokens per
+word and share of words that gain 2 or more tokens.
+
+smc-released on FLORES: stray ZWSP **24.9%** cut the same way (15,129 words), ZWNJ in conjunct **3.4%** (11,547
+words), typo **+0.78** tokens per word, **19.9%** of words gain 2+ tokens (14,484 words).
+
+**Predictions for our variants (before seeing them):** norm and morph behave like smc-released on ZWSP (< 40%) and
+ZWNJ (< 10%), because the normaliser does not remove zero-width characters; typo fragmentation within ±5 points
+of smc-released for base/norm, lower for akshara (whole syllables lose less when a sign is missing). If confirmed,
+the next normaliser removes ZWSP (no role in Malayalam spelling) and is tested again; whether to drop ZWNJ is a
+separate decision (it changes how a conjunct is drawn, not how it is said).

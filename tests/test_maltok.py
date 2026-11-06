@@ -100,3 +100,20 @@ def test_heldout_split_is_by_article_and_disjoint(tmp_path):
     assert held and not set(train_lines) & set(held)
     assert len(train_lines) + len(held) == 1200
     assert sum(is_heldout(u) for u in urls) == len(held) // 3          # whole articles move together
+
+
+def test_perturbations_are_deterministic_and_minimal():
+    from maltok.evaluate import ZWSP, with_typo, with_zwnj, with_zwsp
+    w = "കുട്ടികൾക്ക്"
+    assert with_zwsp(w) == with_zwsp(w) and with_zwsp(w).replace(ZWSP, "") == w
+    assert with_zwnj(w).replace("‌", "") == w and "്‌" in with_zwnj(w)
+    t = with_typo(w)
+    assert len(t) == len(w) - 1 and t != w
+    assert with_zwnj("മരം") is None and with_typo("ക") is None
+
+
+def test_evaluate_reports_robustness(pipes):
+    words = sorted({w for s in SENTENCES[:9] for w in text.MALAYALAM_RUN.findall(normalize(s)) if len(w) > 1})
+    r = evaluate(pipes["norm"], SENTENCES[:9], words)
+    for k in ("robust_zwsp", "robust_zwnj", "typo_extra", "typo_frag"):
+        assert k in r

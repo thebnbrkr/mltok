@@ -11,7 +11,8 @@ Measures, per pipeline:
   rule 1          on mlmorph-analysed nouns and verbs: word kept whole; among split words, "clean" =
                   a cut at the stem boundary (exact or akshara-rounded) and no cut inside the stem
   rule 2          share of cuts that fall inside an akshara
-  robustness      share of words containing a chillu or ന്റ whose 2008-era spelling gives the same pieces
+  robustness      share of words containing a chillu or ന്റ whose 2008-era spelling is cut the same way
+                  (pieces compared after normalising each piece)
 Rule 1 for the morph variant is partly circular: it was trained to respect the same mlmorph boundaries.
 """
 from __future__ import annotations
@@ -92,8 +93,9 @@ def evaluate(pipe: Pipeline, lines: list[str], words: list[str]) -> dict:
         r[f"{pos}_stem_cut"] = s["stem_cut"] / max(1, s["split"])
     # robustness to 2008-era spellings
     affected = [w for w in words if NTA in w or any(ch in w for ch in OLD_CHILLU.values())]
-    same = sum([p.replace(WS, "") for p in pipe.pieces(old_encoding(w))] ==
-               [p.replace(WS, "") for p in pipe.pieces(w)] for w in affected)
+    def split(word):   # pieces normalised one by one: "is the word cut the same way?", not "same bytes?"
+        return [q for q in (normalize(p.replace(WS, "")) for p in pipe.pieces(word)) if q]
+    same = sum(split(old_encoding(w)) == split(w) for w in affected)
     r["robust"] = same / max(1, len(affected))
     r["robust_n"] = len(affected)
     return r

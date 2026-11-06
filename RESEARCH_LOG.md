@@ -92,3 +92,45 @@ analysis included), akshara 70 s.
 so nothing was extracted, and `curl -s` hid the failure. **Fix:** the data cell now extracts with Python's
 `tarfile`, matching on the end of the name, and asserts that both files have the expected number of lines.
 The trained pilot tokenizers are unaffected; re-running the stage with `--skip-existing` only evaluates.
+
+---
+
+## 2026-11-06 (later): Pilot results (200k sentences, 16k vocabulary; not used for conclusions)
+
+Colab training times: base 119 s, norm 117 s, morph 197 s, akshara 73 s.
+
+| tokenizer | FLORES tok/word | Wiki tok/word | lone ▁ (F / W) | nouns clean (F / W) | verbs clean (F / W) | cuts in akshara (F) | Rényi eff. (F) |
+|---|---|---|---|---|---|---|---|
+| smc-released | 2.13 | 2.36 | 4.1% / 5.5% | 75.8% / 68.9% | 26.2% / 26.2% | 36.1% | 0.526 |
+| base | 2.13 | 2.15 | 2.1% / 3.3% | 74.5% / 69.7% | 26.3% / 27.0% | 34.0% | 0.567 |
+| norm | 2.11 | 2.15 | 2.1% / 3.3% | 74.3% / 69.7% | 26.3% / 27.3% | 33.9% | 0.567 |
+| **morph** | 2.17 | 2.18 | 1.6% / 2.3% | **86.7% / 82.0%** | **76.8% / 81.3%** | 29.3% | **0.587** |
+| akshara | 2.38 | 2.39 | 2.2% / 3.0% | 64.6% / 59.1% | 39.2% / 41.7% | **0.5%** | 0.573 |
+
+F = FLORES (2,009 sentences), W = held-out Wikipedia articles (5,000 sentences). "Wiki" for base/norm/morph/akshara
+is in-domain (same source as training, different articles); smc-released was trained on the SMC corpus.
+
+**Metric fix.** The robustness column ("2008 spelling same") compared raw piece strings, so any tokenizer that
+does not normalise scored 0.0% by construction. It now compares pieces after normalising each piece ("is the
+word cut the same way?"). Corrected value for smc-released on FLORES: **41.3%** of 5,203 words (59% are cut
+differently when written the 2008 way); the normalising variants were 99.7% (FLORES) and 98.9% (Wikipedia) under
+the old metric, which for them already compares normalised text.
+
+### Prediction check
+
+- `base` vs `smc-released` within ±0.1 tok/word: **right on FLORES** (2.13 = 2.13); on held-out Wikipedia base is
+  0.21 better, an in-domain effect (it was trained on Wikipedia).
+- `norm` vs `base`: robustness ~100% **right**; tok/word −0.02 on FLORES, 0 on Wikipedia, **right** (< 0.02).
+- `morph`: nouns clean > 90% **wrong** (86.7% / 82.0%); tok/word +3–10% **wrong in a good way**: +2.8% FLORES,
+  +1.4% Wikipedia. Verbs clean rose from ~26% to 77–81%, not predicted. Words are never kept whole (0%, by
+  construction: the boundary is forced). Rule 1 for morph is partly circular.
+- `akshara`: cuts inside an akshara ~0% **right** (0.5%, unmapped rare aksharas); nouns clean drops **right**;
+  tok/word within 5% **wrong**: +12.8% (FLORES), +11% (Wikipedia).
+- "No variant removes the lone ▁": **partly wrong**. None removes it, but retraining roughly halves it (4.1% → 2.1%
+  FLORES) and morph lowers it further (1.6%).
+
+### Reading (pilot only)
+
+By the decision rule (better on morphology and robustness, tok/word at most 5% worse), **morph passes** on both
+sets, **akshara fails** on compactness, and **norm** is a free robustness fix with no cost. The full-corpus run
+decides; the native-speaker gold set is still needed because rule 1 for morph is partly circular.

@@ -101,6 +101,7 @@ def evaluate(pipe: Pipeline, lines: list[str], words: list[str]) -> dict:
     # rule 1 and rule 2 on distinct normalised words
     stats = {pos: Counter() for pos in ("noun", "verb")}
     cut_in = cut_all = mismatch = 0
+    cmp_ = Counter()
     for w in words:
         cuts, ok = word_cuts(pipe, w)
         if not ok:
@@ -109,6 +110,15 @@ def evaluate(pipe: Pipeline, lines: list[str], words: list[str]) -> dict:
         starts = akshara_starts(w)
         cut_all += len(cuts)
         cut_in += sum(c not in starts for c in cuts)
+        comp = morph.compound(w)
+        if comp:
+            first = comp[0][0]
+            cmp_["n"] += 1
+            if cuts:
+                cmp_["split"] += 1
+                cmp_["clean"] += (first[0] in cuts or first[1] in cuts) and not any(0 < c < min(first) for c in cuts)
+            else:
+                cmp_["whole"] += 1
         b = morph.boundary(w)
         if b is None:
             continue
@@ -123,6 +133,9 @@ def evaluate(pipe: Pipeline, lines: list[str], words: list[str]) -> dict:
         s["stem_cut"] += inner
         s["clean"] += (exact in cuts or rounded in cuts) and not inner
     r["mismatch_words"] = mismatch
+    r["compound_n"] = cmp_["n"]
+    r["compound_whole"] = cmp_["whole"] / max(1, cmp_["n"])
+    r["compound_clean"] = cmp_["clean"] / max(1, cmp_["split"])
     r["akshara_cuts"] = cut_in / max(1, cut_all)
     for pos, s in stats.items():
         r[f"{pos}_n"] = s["n"]
@@ -154,6 +167,7 @@ MAIN = [("tok_per_word", "tok/word", "{:.2f}"), ("lone_ws", "lone ▁", "{:.1%}"
         ("renyi_eff", "Rényi eff.", "{:.3f}"), ("noun_whole", "nouns whole", "{:.1%}"),
         ("noun_clean", "nouns clean", "{:.1%}"), ("noun_stem_cut", "noun stem cut", "{:.1%}"),
         ("verb_whole", "verbs whole", "{:.1%}"), ("verb_clean", "verbs clean", "{:.1%}"),
+        ("compound_whole", "compounds whole", "{:.1%}"), ("compound_clean", "compounds clean", "{:.1%}"),
         ("akshara_cuts", "cuts in akshara", "{:.1%}")]
 ROBUST = [("robust", "2008 spelling: same cut", "{:.1%}"), ("robust_zwsp", "stray ZWSP: same cut", "{:.1%}"),
           ("robust_zwnj", "ZWNJ in conjunct: same cut", "{:.1%}"), ("typo_extra", "typo: extra tokens", "{:+.2f}"),
@@ -193,12 +207,27 @@ def main(argv=None) -> None:
         n = results[0]
         md += [f"### {title}", "",
                f"{len(lines):,} sentences, {len(words):,} distinct words; mlmorph-analysed stems: "
-               f"{n['noun_n']:,} nouns, {n['verb_n']:,} verbs; {n['robust_n']:,} words with a chillu or ന്റ "
+               f"{n['noun_n']:,} nouns, {n['verb_n']:,} verbs, {n['compound_n']:,} compounds; {n['robust_n']:,} words with a chillu or ന്റ "
                "for the 2008-spelling test.", "", "**Compactness and morphology**", "", table(results), "",
                f"**Robustness** (stray ZWSP: {n['robust_zwsp_n']:,} words; ZWNJ: {n['robust_zwnj_n']:,} words "
                f"with a conjunct; typo, one vowel sign deleted: {n['typo_n']:,} words)", "",
                table(results, ROBUST), ""]
         everything[title] = results
+    from . import gold
+    if gold.GOLD.exists():
+        rows = gold.load()
+        kinds = sorted({r["sandhi"] for r in rows})
+        res = {p.name: gold.evaluate(p, rows) for p in pipes}
+        head = "| tokenizer | all: join found | all: clean | " + " | ".join(f"{k}: found" for k in kinds) + " |"
+        md += ["### പിരിച്ചെഴുതുക gold set (draft; to be checked by a native speaker)", "",
+               f"{len(rows)} joined words with their school split. found = the tokenizer cuts at every join; "
+               "clean = and does not cut inside the first part.", "", head, "|---|" + "---|" * (2 + len(kinds))]
+        for name, g in res.items():
+            cells = [f"{g['all']['found']:.0%} ({g['all']['n']})", f"{g['all']['clean']:.0%}"] + \
+                    [f"{g[k]['found']:.0%} ({g[k]['n']})" if k in g else "—" for k in kinds]
+            md.append(f"| {name} | " + " | ".join(cells) + " |")
+        md.append("")
+        everything["gold"] = res
     (out / "eval.json").write_text(json.dumps(everything, indent=1, ensure_ascii=False))
     (out / "eval.md").write_text("\n".join(md))
     print("\n".join(md))

@@ -28,6 +28,7 @@ Trains four variants of Santhosh Thottingal's recipe (HF `tokenizers` Unigram, 1
 | `base` | nothing: the SMC recipe retrained on this corpus (separates data from recipe) |
 | `norm` | normaliser: 2008-era chillus → atomic chillus, three spellings of ന്റ → one |
 | `morph` | `norm` + pieces never cross mlmorph's stem\\|suffix boundary |
+| `compound` | `morph` + pieces never cross compound and sandhi joins (സമാസം, സന്ധി: ആന\\|പ്പുറ\\|ത്തു) |
 | `akshara` | `norm` + pieces are whole aksharas (each akshara mapped to one private-use character) |
 
 Predictions are written in `RESEARCH_LOG.md` before this runs.
@@ -91,7 +92,7 @@ Checks that everything runs and how long each variant takes. Pilot results are n
     md("""
 ## Stage 3: full corpus with 99.99% character coverage
 
-The full-corpus run above spends about half of its 16k vocabulary on single foreign characters (Chinese, Korean, Arabic, ...), because the trainer adds every character it sees. Here the rarest characters (the last 0.01% of character occurrences) are dropped from training, as SentencePiece's `character_coverage` does. The evaluation includes the Stage 2 tokenizers, so both are scored the same way, with the harder robustness tests.
+The full-corpus run above spends about half of its 16k vocabulary on single foreign characters (Chinese, Korean, Arabic, ...), because the trainer adds every character it sees. Here the rarest characters (the last 0.01% of character occurrences) are dropped from training, as SentencePiece's `character_coverage` does. This stage also trains the new `compound` variant and scores every tokenizer on the പിരിച്ചെഴുതുക gold set (`gold/pirichezhuthuka.tsv`, a draft). The evaluation includes the Stage 2 tokenizers, so both are scored the same way, with the harder robustness tests.
 """),
     code("""
 !python -m maltok.train --data {WIKI} --char-coverage 0.9999 --out {OUT}/full_cov --skip-existing

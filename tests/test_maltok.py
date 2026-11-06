@@ -128,3 +128,31 @@ def test_char_coverage_keeps_rare_characters_out_of_the_vocabulary():
     vocab = p.tok.get_vocab()
     assert not any("漢" in t or "한" in t for t in vocab)
     assert word_cuts(p, "മരത്തിൽ")[1]                           # Malayalam still spelled correctly
+
+
+def test_compound_and_sandhi_joins():
+    seg = lambda w: morph.segment_word(w, compounds=True).replace(morph.MARK, "|")
+    assert seg("ആനപ്പുറത്തു") == "ആന|പ്പുറ|ത്തു"          # doubling: the doubled consonant goes right
+    assert seg("തരംതിരിക്കാൻ") == "തരം|തിരിക്ക|ാൻ"
+    assert seg("മഴയില്ല") == "മഴ|യില്ല"                    # inserted glide goes right
+    assert seg("അതല്ല") == "അത|ല്ല"
+    assert seg("മരത്തിൽ") == "മര|ത്തിൽ"                    # single stem falls back to stem|suffix
+
+
+def test_gold_set_loads_and_places_every_join():
+    from maltok import gold
+    rows = gold.load()
+    assert len(rows) >= 20 and all(len(r["parts"]) >= 2 for r in rows)
+    assert all(gold.joins(r["word"], r["parts"]) for r in rows), [r["word"] for r in rows if not gold.joins(r["word"], r["parts"])]
+    assert gold.joins("ആനപ്പുറം", ["ആന", "പുറം"]) == [(4, 2)]
+    assert gold.joins("കണ്ണീർ", ["കൺ", "നീർ"])[0][1] == 1   # ആദേശം: falls back to the shared prefix (ക|ണ്ണീർ)
+
+
+def test_compound_variant_trains_and_respects_joins(tmp_path):
+    lines = SENTENCES + ["ആനപ്പുറത്തു കയറി.", "അവർ തരംതിരിക്കാൻ തുടങ്ങി.", "ഇന്ന് മഴയില്ല."] * 20
+    p = train("compound", lines, vocab_size=300)
+    cuts, ok = word_cuts(p, "ആനപ്പുറത്തു")
+    assert ok and 2 in cuts                                   # ആന | പ്പുറ...
+    from maltok import gold
+    r = gold.evaluate(p, gold.load())
+    assert r["all"]["n"] >= 20 and 0 <= r["all"]["found"] <= 1

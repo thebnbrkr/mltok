@@ -1,0 +1,30 @@
+# പിരിച്ചെഴുതുക gold set: joined word, its parts (as a school split writes them), the sandhi kind.
+# DRAFT seeded from classic textbook examples; every row must be checked by a native speaker.
+# Columns: word<TAB>parts joined by " + "<TAB>sandhi (ലോപം elision, ആഗമം insertion, ആദേശം substitution, ദ്വിത്വം doubling, none)<TAB>note
+word	parts	sandhi	note
+ആനപ്പുറം	ആന + പുറം	ദ്വിത്വം	
+ആനപ്പുറത്ത്	ആന + പുറത്ത്	ദ്വിത്വം	Thottingal's MTEB example
+മേശപ്പുറം	മേശ + പുറം	ദ്വിത്വം	
+തീപ്പെട്ടി	തീ + പെട്ടി	ദ്വിത്വം	
+പുലിത്തോൽ	പുലി + തോൽ	ദ്വിത്വം	
+നീലക്കണ്ണ്	നീല + കണ്ണ്	ദ്വിത്വം	
+വാഴപ്പഴം	വാഴ + പഴം	ദ്വിത്വം	
+കുട്ടിക്കളി	കുട്ടി + കളി	ദ്വിത്വം	
+കടൽക്കര	കടൽ + കര	ദ്വിത്വം	
+മരക്കൊമ്പ്	മരം + കൊമ്പ്	ദ്വിത്വം	also ലോപം of ം
+കാട്ടാന	കാട് + ആന	ദ്വിത്വം	also ലോപം of ്
+രാപ്പകൽ	രാവ് + പകൽ	ദ്വിത്വം	also ലോപം
+തിരുവോണം	തിരു + ഓണം	ആഗമം	വ inserted
+തിരുവനന്തപുരം	തിരു + അനന്തപുരം	ആഗമം	വ inserted
+മഴയില്ല	മഴ + ഇല്ല	ആഗമം	യ inserted
+പൂവില്ല	പൂ + ഇല്ല	ആഗമം	വ inserted
+കണ്ടില്ല	കണ്ടു + ഇല്ല	ലോപം	ഉ dropped
+വന്നില്ല	വന്നു + ഇല്ല	ലോപം	ഉ dropped
+അതല്ല	അത് + അല്ല	ലോപം	
+കാറ്റടിച്ചു	കാറ്റ് + അടിച്ചു	ലോപം	
+നന്മ	നൽ + മ	ആദേശം	ൽ -> ൻ
+കണ്ണീർ	കൺ + നീർ	ആദേശം	ൺ + ന -> ണ്ണ
+വെണ്ണിലാവ്	വെൺ + നിലാവ്	ആദേശം	
+ചെന്താമര	ചെം + താമര	ആദേശം	ം -> ൻ
+അച്ഛനമ്മമാർ	അച്ഛൻ + അമ്മമാർ	none	ദ്വന്ദ്വസമാസം
+തരംതിരിക്കുക	തരം + തിരിക്കുക	none	noun + verb compound

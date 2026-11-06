@@ -223,3 +223,36 @@ the corrected robustness metric and the harder tests.
 **Prediction check for Stage 2 vs the pilot:** none of the pilot predictions were meant for this case; the pilot
 conclusions (morph best on grammar, akshara too costly) hold in direction, but the compactness numbers are
 invalid until the character explosion is fixed.
+
+---
+
+## 2026-11-06 (later): Compounds and sandhi (സമാസം, സന്ധി, പിരിച്ചെഴുതുക)
+
+**New variant `compound`:** `morph` plus forced cuts at compound and sandhi joins found by mlmorph, which writes a
+compound as several roots (ആന<n><adj>പുറം<n><locative>, കാണുക<v><past>ഇല്ല<neg>). Each later root is located by the
+start of its surface form (verb ending ‑ുക and final anusvara/chillu/virama dropped; an initial vowel becomes its
+vowel sign, അ disappears). A doubled consonant or an inserted യ/വ goes with the following part; a cut that would
+split a consonant cluster moves back to its akshara. Examples: ആന|പ്പുറ|ത്തു, തരം|തിരിക്ക|ാൻ, മഴ|യില്ല, അത|ല്ല,
+മര|ക്കൊമ്പ്. `morph` is unchanged, so earlier results stay comparable.
+
+**New evaluation columns:** "compounds whole" and "compounds clean" (cut at the first join, no cut inside the first
+part) on words mlmorph analyses as compounds.
+
+**പിരിച്ചെഴുതുക gold set (draft):** `gold/pirichezhuthuka.tsv`, 26 classic textbook splits labelled by sandhi kind
+(ദ്വിത്വം doubling 12, ആഗമം insertion 4, ആദേശം substitution 4, ലോപം elision 4, none 2). To be checked and extended
+by a native speaker. Convention: an inserted glide is placed with the following part (തിരു|വോണം).
+
+First look on the existing (Stage 2, pre-coverage) tokenizers, 26 words, so only indicative:
+
+| tokenizer | joins found | clean | ദ്വിത്വം | ആഗമം | ആദേശം | ലോപം |
+|---|---|---|---|---|---|---|
+| smc-released | 73% | 69% | 100% | 25% | 50% | 75% |
+| base / norm / morph (full) | 85% | 77% | 100% | 25% | 75% | 100% |
+| akshara (full) | 96% | 46% | 100% | 75% | 100% | 100% |
+
+Insertion (ആഗമം) is the weak case: tokenizers cut തിരുവ|ോണം (glide on the left) where the convention is
+തിരു|വോണം; whether the glide should go left or right is a convention to settle with the native speaker. akshara
+"finds" joins by over-splitting (clean 46%).
+
+**Predictions for `compound` in Stage 3 (before running):** compounds clean ≥ 80% (partly circular, as for morph);
+gold joins found ≥ 85% and clean ≥ 80%; tok/word within 2% of `morph`.

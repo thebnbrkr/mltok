@@ -7,6 +7,7 @@ They differ only in what is done to the text first:
   base      nothing (the SMC recipe retrained on our data)
   norm      maltok.text.normalize (2008-era chillus, ന്റ spellings)
   morph     norm + a forced boundary at mlmorph's stem|suffix cut (pieces never cross it)
+  compound  morph + forced boundaries at compound and sandhi joins (സമാസം, സന്ധി; ആന|പ്പുറ|ത്തു)
   akshara   norm + every akshara mapped to one private-use character, so pieces are whole aksharas
             (aksharas outside the map, i.e. rare ones, stay as characters)
 """
@@ -21,7 +22,7 @@ from tokenizers import Tokenizer, decoders, models, normalizers, pre_tokenizers,
 from . import morph
 from .text import MALAYALAM_RUN, aksharas, normalize
 
-VARIANTS = ("base", "norm", "morph", "akshara")
+VARIANTS = ("base", "norm", "morph", "compound", "akshara")
 SPECIAL = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
 PUA_START, PUA_SIZE = 0xE000, 6400        # Basic Multilingual Plane private-use area
 
@@ -30,7 +31,7 @@ def new_tokenizer(variant: str) -> Tokenizer:
     tok = Tokenizer(models.Unigram())
     tok.normalizer = normalizers.Sequence([normalizers.Strip(), normalizers.NFC()])
     meta = pre_tokenizers.Metaspace(replacement="▁", prepend_scheme="always", split=True)
-    if variant == "morph":
+    if variant in ("morph", "compound"):
         tok.pre_tokenizer = pre_tokenizers.Sequence([meta, pre_tokenizers.Split(morph.MARK, behavior="removed")])
     else:
         tok.pre_tokenizer = meta
@@ -72,8 +73,8 @@ class Pipeline:
     def prepare(self, text: str) -> str:
         if self.variant != "base":
             text = normalize(text)
-        if self.variant == "morph":
-            text = morph.segment_text(text)
+        if self.variant in ("morph", "compound"):
+            text = morph.segment_text(text, compounds=self.variant == "compound")
         if self.variant == "akshara":
             text = MALAYALAM_RUN.sub(lambda m: "".join(self.amap.get(a, a) for a in aksharas(m.group())), text)
         return text
@@ -120,7 +121,7 @@ def train(variant: str, lines: list[str], vocab_size: int = 16000, coverage: flo
         lines = ["".join(ch for ch in line if ch in keep) for line in lines]
     amap = akshara_map(lines) if variant == "akshara" else None
     pipe = Pipeline(new_tokenizer(variant), variant, amap)
-    if variant == "morph":
+    if variant in ("morph", "compound"):
         words = (run for line in lines for run in MALAYALAM_RUN.findall(normalize(line)))
         morph.precompute(words)
     trainer = trainers.UnigramTrainer(vocab_size=vocab_size, special_tokens=SPECIAL, unk_token="<unk>")

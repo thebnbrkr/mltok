@@ -1,5 +1,7 @@
 # mltok
 
+**Picking this up? Start with [`docs/HANDOFF.md`](docs/HANDOFF.md)**: goal, rationale, results so far, how to run and change everything, open decisions and references.
+
 Checks of Malayalam tokenizers against Malayalam grammar, as groundwork for a tokenizer × TTS study
 (Pocket TTS; Hungarian counterpart in the Pocket-hu / IWCLUL 2026 work).
 
